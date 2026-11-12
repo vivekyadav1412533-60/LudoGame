@@ -1,0 +1,386 @@
+
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Ludo Game</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;
+ background:linear-gradient(135deg,#10172c,#253b68);
+ color:white;
+ font-family:Arial,sans-serif;
+ text-align:center;
+}
+header{padding:15px}
+h1{color:#ffda44;text-shadow:0 0 12px orange}
+.panel{
+ background:#ffffff15;
+ padding:15px;
+ margin:12px auto;
+ border-radius:15px;
+ max-width:650px;
+}
+select,input,button{
+ padding:10px;
+ border:0;
+ border-radius:9px;
+ margin:5px;
+}
+button{cursor:pointer;font-weight:bold}
+#board{
+ display:grid;
+ grid-template-columns:repeat(15,1fr);
+ width:min(94vw,600px);
+ aspect-ratio:1;
+ margin:15px auto;
+ background:#e8e8e8;
+ border:5px solid white;
+ border-radius:8px;
+ overflow:hidden;
+}
+.cell{
+ border:1px solid #bbb;
+ position:relative;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ background:#fff;
+ min-width:0;
+}
+.track{background:#dce7ee}
+.red{background:#ff6262}
+.green{background:#4ee09a}
+.yellow{background:#ffdb52}
+.blue{background:#65a9ff}
+.center{
+ background:conic-gradient(#ff6262 0 25%,#4ee09a 0 50%,#ffdb52 0 75%,#65a9ff 0);
+}
+.token{
+ width:90%;
+ height:90%;
+ border-radius:50%;
+ border:2px solid white;
+ color:white;
+ font-size:clamp(7px,2vw,13px);
+ box-shadow:0 2px 5px #333;
+}
+.token:disabled{opacity:.5;cursor:not-allowed}
+.player-card{
+ display:inline-block;
+ padding:10px;
+ margin:5px;
+ border-radius:10px;
+ background:#ffffff20;
+ min-width:110px;
+}
+.active{outline:3px solid #ffdf42}
+#dice{
+ font-size:55px;
+ margin:8px;
+}
+#roll{
+ background:#ffda44;
+ color:#222;
+ font-size:18px;
+ padding:13px 25px;
+}
+#status{font-size:17px;color:#ffe68a}
+.small{font-size:12px;color:#ddd}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>🎲 SUPER LUDO GAME</h1>
+<p>Play • Roll • Win!</p>
+</header>
+
+<div class="panel">
+<h3>👥 Game Setup</h3>
+
+<select id="count">
+<option value="2">2 Players</option>
+<option value="3">3 Players</option>
+<option value="4" selected>4 Players</option>
+</select>
+
+<div id="names">
+<input placeholder="Player 1 Name" value="Player 1">
+<input placeholder="Player 2 Name" value="Player 2">
+<input placeholder="Player 3 Name" value="Player 3">
+<input placeholder="Player 4 Name" value="Player 4">
+</div>
+
+<button onclick="startGame()" style="background:#4ee09a">
+START GAME
+</button>
+
+<p class="small" id="device">Detecting device...</p>
+</div>
+
+<div class="panel">
+<h3>🎲 Dice</h3>
+<div id="dice">⚀</div>
+<button id="roll" onclick="rollDice()">ROLL DICE</button>
+<p id="status">Start a new game!</p>
+<p id="moveInfo">Choose a token after rolling.</p>
+</div>
+
+<div id="board"></div>
+
+<div class="panel">
+<h3>🏆 Players Information</h3>
+<div id="players"></div>
+</div>
+
+<script>
+const colors=["#ef4444","#16a34a","#eab308","#3b82f6"];
+const names=["Red","Green","Yellow","Blue"];
+
+let players=[];
+let turn=0;
+let dice=0;
+let rolled=false;
+let gameStarted=false;
+
+// Device detection
+let ua=navigator.userAgent;
+let deviceName=/Android|iPhone|iPad|Mobile/i.test(ua)
+?"Mobile Device":"Laptop / Desktop";
+
+document.getElementById("device").innerText=
+"Your Device: "+deviceName;
+
+// Make a 52-cell square track
+let path=[];
+
+for(let x=1;x<=13;x++) path.push([1,x]);
+for(let y=2;y<=13;y++) path.push([y,13]);
+for(let x=12;x>=0;x--) path.push([13,x]);
+for(let y=12;y>=2;y--) path.push([y,0]);
+
+function startGame(){
+ let count=+document.getElementById("count").value;
+ let inputs=[...document.querySelectorAll("#names input")];
+
+ players=[];
+
+ for(let i=0;i<count;i++){
+  players.push({
+   name:inputs[i].value || "Player "+(i+1),
+   color:colors[i],
+   tokens:[-1,-1,-1,-1],
+   start:i*13,
+   finished:0
+  });
+ }
+
+ turn=0;
+ dice=0;
+ rolled=false;
+ gameStarted=true;
+
+ document.getElementById("status").innerText=
+ players[0].name+" की बारी है!";
+
+ document.getElementById("moveInfo").innerText=
+ "पासा रोल करें।";
+
+ drawBoard();
+ updatePlayers();
+}
+
+function drawBoard(){
+ const board=document.getElementById("board");
+ board.innerHTML="";
+
+ let cells={};
+
+ for(let r=0;r<15;r++){
+  for(let c=0;c<15;c++){
+   let div=document.createElement("div");
+   div.className="cell";
+
+   if(r===0 && c===0) div.classList.add("red");
+   if(r===0 && c===14) div.classList.add("green");
+   if(r===14 && c===14) div.classList.add("yellow");
+   if(r===14 && c===0) div.classList.add("blue");
+
+   if(r>=6 && r<=8 && c>=6 && c<=8)
+    div.classList.add("center");
+
+   let p=path.findIndex(v=>v[0]===r && v[1]===c);
+   if(p!==-1) div.classList.add("track");
+
+   board.appendChild(div);
+   cells[r+","+c]=div;
+  }
+ }
+
+ // Home bases
+ let bases=[
+ [[3,3],[3,4],[4,3],[4,4]],
+ [[3,10],[3,11],[4,10],[4,11]],
+ [[10,10],[10,11],[11,10],[11,11]],
+ [[10,3],[10,4],[11,3],[11,4]]
+ ];
+
+ players.forEach((player,pi)=>{
+  player.tokens.forEach((step,ti)=>{
+   let pos;
+
+   if(step===-1){
+    pos=bases[pi][ti];
+   }else if(step>=52){
+    pos=[7,7];
+   }else{
+    let index=(player.start+step)%52;
+    pos=path[index];
+   }
+
+   let cell=cells[pos[0]+","+pos[1]];
+   if(!cell)return;
+
+   let btn=document.createElement("button");
+   btn.className="token";
+   btn.style.background=player.color;
+   btn.innerText=(pi+1)+"-"+(ti+1);
+
+   let canMove=gameStarted &&
+    pi===turn && rolled &&
+    (step===-1 ? dice===6 : step<52 && step+dice<=57);
+
+   btn.disabled=!canMove;
+
+   btn.onclick=()=>moveToken(pi,ti);
+
+   cell.appendChild(btn);
+  });
+ });
+}
+
+function rollDice(){
+ if(!gameStarted || rolled)return;
+
+ dice=Math.floor(Math.random()*6)+1;
+ rolled=true;
+
+ let faces=["","⚀","⚁","⚂","⚃","⚄","⚅"];
+ document.getElementById("dice").innerText=faces[dice];
+
+ document.getElementById("status").innerText=
+ players[turn].name+" को "+dice+" मिला!";
+
+ let movable=players[turn].tokens.some(
+  s=>s===-1 ? dice===6 : s<52 && s+dice<=57
+ );
+
+ if(!movable){
+  document.getElementById("moveInfo").innerText=
+   "कोई गोटी नहीं चल सकती। अगली बारी!";
+  setTimeout(nextTurn,1000);
+ }else{
+  document.getElementById("moveInfo").innerText=
+   "अपनी चमकती हुई गोटी पर क्लिक करें।";
+ }
+
+ drawBoard();
+}
+
+function moveToken(pi,ti){
+ if(pi!==turn || !rolled)return;
+
+ let p=players[pi];
+ let old=p.tokens[ti];
+
+ if(old===-1){
+  if(dice!==6)return;
+  p.tokens[ti]=0;
+ }else{
+  if(old+dice>57)return;
+  p.tokens[ti]=old+dice;
+ }
+
+ let current=p.tokens[ti];
+
+ document.getElementById("moveInfo").innerText=
+ p.name+" की Goti "+(ti+1)+" चली! अब "+current+"/57";
+
+ if(current===57){
+  p.finished++;
+  alert(p.name+" की एक गोटी घर पहुंच गई!");
+ }
+
+ // Basic capture on shared track
+ if(current<52){
+  let index=(p.start+current)%52;
+
+  players.forEach((other,oi)=>{
+   if(oi===pi)return;
+
+   other.tokens.forEach((s,j)=>{
+    if(s>=0 && s<52 &&
+       (other.start+s)%52===index){
+      other.tokens[j]=-1;
+      document.getElementById("moveInfo").innerText=
+       p.name+" ने "+other.name+" की गोटी काट दी!";
+    }
+   });
+  });
+ }
+
+ if(p.finished===4){
+  alert("🏆 "+p.name+" जीत गए!");
+  gameStarted=false;
+  return;
+ }
+
+ rolled=false;
+ drawBoard();
+ updatePlayers();
+
+ if(dice!==6)nextTurn();
+ else document.getElementById("status").innerText=
+  p.name+" को 6 मिला! फिर से पासा फेंकें।";
+}
+
+function nextTurn(){
+ if(!gameStarted)return;
+ rolled=false;
+ turn=(turn+1)%players.length;
+
+ document.getElementById("status").innerText=
+ players[turn].name+" की बारी है!";
+
+ document.getElementById("moveInfo").innerText=
+ "पासा रोल करें।";
+
+ drawBoard();
+ updatePlayers();
+}
+
+function updatePlayers(){
+ let box=document.getElementById("players");
+ box.innerHTML="";
+
+ players.forEach((p,i)=>{
+  let div=document.createElement("div");
+  div.className="player-card"+(i===turn?" active":"");
+
+  div.innerHTML=
+   `<b style="color:${p.color}">${p.name}</b>
+   <p>Goti: ${p.tokens.filter(x=>x>=0).length}/4</p>
+   <p>घर: ${p.finished}/4</p>
+   <p>${i===turn?"▶ Playing":"Waiting"}</p>`;
+
+  box.appendChild(div);
+ });
+}
+</script>
+</body>
+</html>
